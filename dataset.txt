@@ -1,0 +1,1 @@
+I have a dataset that contains product details for thousands of different products. I want to train a model to be able to answer product questions such as “What’s the most reviewed gray bottle we have?”.
