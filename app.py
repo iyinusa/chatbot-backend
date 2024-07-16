@@ -99,6 +99,7 @@ def GPT(msg):
     with open("dataset.txt", "r") as f:
         dataset = f.read()
     
+    # get response from dataset
     genResponse = openAI.chat.completions.create(
         model = "gpt-3.5-turbo",
         messages = msg
