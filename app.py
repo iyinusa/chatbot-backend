@@ -20,7 +20,6 @@ openAI = OpenAI(
 )
 
 # Set the environment variable for Google Application Credentials
-sa_credential = service_account.Credentials.from_service_account_file('sa-credential.json')
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = "sa-credential.json"
 
 # Initialize Google Cloud Clients
@@ -32,50 +31,38 @@ langs = { "en": "en-US", "es": "es-AR", "it": "it-IT", "ur": "ur-IN", "hi": "hi-
 
 messages = []
 
+# Spoken Dialogue
 @app.route('/process', methods=['POST'])
 def process_audio():
     audio_content = request.files['audio'].read()
     langCode = request.form['language']
     
-    # # path to audio file
-    # file_name = "OSR_us_000_0013_8k.wav"
-    # with io.open(file_name, "rb") as audio_file:
-    #     content = audio_file.read()
-    #     audio = speech.RecognitionAudio(content=content)
-
-    # Speech-to-Text
-    config = speech.RecognitionConfig(
-        encoding = speech.RecognitionConfig.AudioEncoding.LINEAR16,
-        enable_automatic_punctuation = True,
-        language_code = langs[langCode]
-        # audio_channel_count = 1,
-        # sample_rate_hertz = 16000,
-    )
-    audio = speech.RecognitionAudio(content=audio_content)
-    response = speech_client.recognize(
-        request = {
-            "config": config, 
-            "audio": audio
-        }
-    )
-    
     # Read transcripts from speech
-    transcript = ''
-    for result in response.results:
-        transcript += " " + result.alternatives[0].transcript
+    transcript = getTranscript(langCode, audio_content)
     
-    # Generate response using GPT-3 or GPT-4
-    messages.append({"role": "user", "content": transcript})
-    text_response = GPT(messages)
-
-    # Translate response using GPT API
-    translate_prompt = f"Translate the following text to {langs[langCode]}: {text_response}"
-    messages.append({"role": "user", "content": translate_prompt})
+    # If Audio Transcript not English, translate from choosen Language
+    # to English for easy Intent Identification and response generation
+    if langCode != 'en':
+        transcript = translateLang(transcript, 'en')
     
-    translated_response = GPT(messages)
+    # Generate response using NLP/GPT based on the e-Commerce trained data context
+    # dataset 
+    dataset = ''
+    with open("dataset.txt", "r") as f:
+        dataset = f.read()
+        
+    context_prompt = f"Chat:\n{dataset}\nUser: {transcript}\n"
+    messages.append({"role": "user", "content": context_prompt})
+    responseText = GPT(messages)
+    
+    # Now check if conversation language is not English
+    # then translate the response back to choosen Language
+    if langCode != 'en':
+        responseText = translateLang(responseText, langCode)
 
-    # Text-to-Speech
-    synthesis_input = texttospeech.SynthesisInput(text = translated_response)
+    # Finally, convert response to Speech
+    # Using the Text-to-Speech Synthesis API
+    synthesis_input = texttospeech.SynthesisInput(text = responseText)
     voice_params = texttospeech.VoiceSelectionParams(language_code = langCode)
     audio_config = texttospeech.AudioConfig(audio_encoding = texttospeech.AudioEncoding.MP3)
 
@@ -90,14 +77,80 @@ def process_audio():
 
     return jsonify({'audio_content': audio_base64})
 
-# Using GPT to generate support response
-def GPT(msg):
-    response = ''
+# Chat Dialogue
+@app.route('/chat', methods=['POST'])
+def chat():
+    responseText = ''
+    langCode = request.json.get('language')
+    msg = request.json.get('message')
     
-    # load dataset
+    # If Audio Transcript not English, translate from choosen Language
+    # to English for easy Intent Identification and response generation
+    if langCode != 'en':
+        msg = translateLang(msg, 'en')
+        
+    # Generate response using NLP/GPT based on the e-Commerce trained data context
+    # dataset 
     dataset = ''
     with open("dataset.txt", "r") as f:
         dataset = f.read()
+        
+    context_prompt = f"Chat:\n{dataset}\nUser: {msg}\n"
+    messages.append({"role": "user", "content": context_prompt})
+    responseText = GPT(messages)
+    
+    # Now check if conversation language is not English
+    # then translate the response back to choosen Language
+    if langCode != 'en':
+        responseText = translateLang(responseText, langCode)
+    
+    return jsonify({'message': responseText})
+
+# Get Audio transcipt
+def getTranscript(langCode, audioFile):
+    response = ''
+    
+    # Test with audio file
+    # file_name = "OSR_us_000_0013_8k.wav"
+    # with io.open(file_name, "rb") as audio_file:
+    #     content = audio_file.read()
+    #     audio = speech.RecognitionAudio(content=content)
+
+    # Speech-to-Text
+    config = speech.RecognitionConfig(
+        encoding = speech.RecognitionConfig.AudioEncoding.LINEAR16,
+        enable_automatic_punctuation = True,
+        language_code = langs[langCode],
+        # audio_channel_count = 2,
+        # sample_rate_hertz = 16000,
+    )
+    audio = speech.RecognitionAudio(content = audioFile)
+    speechTranscript = speech_client.recognize(
+        request = {
+            "config": config, 
+            "audio": audio
+        }
+    )
+    
+    # Read transcripts from speech
+    for result in speechTranscript.results:
+        response += " " + result.alternatives[0].transcript
+        
+    return response
+
+# Translate between languages using GPT
+def translateLang(msg, langCode):
+    response = ''
+    
+    translate_prompt = f"Translate the following to {langs[langCode]}: {msg}"
+    messages.append({"role": "user", "content": translate_prompt})
+    response = GPT(messages)
+    
+    return response
+
+# Using GPT to generate support response
+def GPT(msg):
+    response = ''
     
     # get response from dataset
     genResponse = openAI.chat.completions.create(
