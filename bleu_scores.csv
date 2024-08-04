@@ -1,0 +1,5 @@
+language,source,target,reference,BLEU_score
+en,I want to cancel my order,"I will be glad to help you, what is the Order Number?",give me your order number,1.2296670260879681e-231
+en,I want to cancel my order,"I will be glad to help you, what is the Order Number?",Give me your Order Number,1.2567088331824486e-231
+en,I want to cancel my order,"['I', 'will', 'be', 'glad', 'to', 'help', 'you,', 'what', 'is', 'the', 'Order', 'Number?']","[['give', 'me', 'your', 'order', 'number']]",0
+en,I want to cancel my order,"['I', 'will', 'be', 'glad', 'to', 'help', 'you,', 'what', 'is', 'the', 'Order', 'Number?']","[['Give', 'me', 'your', 'Order', 'Number']]",9.788429383461836e-232

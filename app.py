@@ -6,6 +6,8 @@ from flask import Flask, request, jsonify
 from google.oauth2 import service_account
 from google.cloud import speech, texttospeech
 from openai import OpenAI
+import pandas as pd
+from nltk.translate.bleu_score import sentence_bleu
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -160,6 +162,45 @@ def GPT(msg):
     response = genResponse.choices[0].message.content.strip()
     
     return response
+
+# BLEU Evaluation
+@app.route('/evaluate_bleu', methods=['POST'])
+def evaluate_bleu():
+    response = ''
+    
+    langCode = request.json.get('language')
+    source = request.json.get('source')
+    target = request.json.get('target')
+    reference = request.json.get('reference')
+    
+    # Compute BLEU score
+    reference = [reference.split()]
+    target = target.split()
+    score = sentence_bleu(reference, target)
+    
+    response = jsonify({
+        'lang': langCode,
+        'source_text': source,
+        'target_text': target,
+        'reference_text': reference,
+        'bleu_score': score
+    })
+    print(response) # tokenized response
+    
+    # save evaluation data
+    file_exists = os.path.isfile('bleu_scores.csv')
+    df = pd.DataFrame([[langCode, source, target, reference, score]],
+                      columns=['language', 'source', 'target', 'reference', 'BLEU_score'])
+    df.to_csv('bleu_scores.csv', mode='a', header=not file_exists, index=False)
+    
+    return response
+
+# Load BLEU Evaluation Data
+@app.route('/load_bleu')
+def load_bleu():
+    df = pd.read_csv('bleu_scores.csv')
+    result = df.to_dict(orient='records')
+    return jsonify(result)
 
 # run app
 if __name__ == '__main__':
