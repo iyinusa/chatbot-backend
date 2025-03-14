@@ -2,16 +2,18 @@ import os
 import io
 from dotenv import load_dotenv, find_dotenv
 import base64
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from google.oauth2 import service_account
 from google.cloud import speech, texttospeech
 from openai import OpenAI
 import pandas as pd
+import matplotlib.pyplot as plt
 from nltk.translate.bleu_score import sentence_bleu
+import multiprocessing
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # load environment variables
 load_dotenv(find_dotenv())
@@ -41,6 +43,7 @@ def process_audio():
     
     # Read transcripts from speech
     transcript = getTranscript(langCode, audio_content)
+    orginalQuestion = transcript
     
     # If Audio Transcript not English, translate from choosen Language
     # to English for easy Intent Identification and response generation
@@ -56,6 +59,8 @@ def process_audio():
     context_prompt = f"Chat:\n{dataset}\nUser: {transcript}\n"
     messages.append({"role": "user", "content": context_prompt})
     responseText = GPT(messages)
+
+    orginalAnswer = responseText
     
     # Now check if conversation language is not English
     # then translate the response back to choosen Language
@@ -77,7 +82,7 @@ def process_audio():
     # Encode audio content to base64 for easy browser playback
     audio_base64 = base64.b64encode(tts_response.audio_content).decode('utf-8')
 
-    return jsonify({'audio_content': audio_base64})
+    return jsonify({'audio_content': audio_base64, 'userMsg': orginalQuestion, 'botMsg':orginalAnswer})
 
 # Chat Dialogue
 @app.route('/chat', methods=['POST'])
@@ -156,8 +161,10 @@ def GPT(msg):
     
     # get response from dataset
     genResponse = openAI.chat.completions.create(
+        # model = "ft:gpt-3.5-turbo-0125:personal::9wBfnrbO",
         model = "gpt-3.5-turbo",
-        messages = msg
+        messages = msg,
+        temperature = 0.5
     )
     response = genResponse.choices[0].message.content.strip()
     
@@ -170,8 +177,8 @@ def evaluate_bleu():
     
     langCode = request.json.get('language')
     source = request.json.get('source')
-    target = request.json.get('target')
-    reference = request.json.get('reference')
+    target = request.json.get('target').lower()
+    reference = request.json.get('reference').lower()
     
     # Compute BLEU score
     reference = [reference.split()]
@@ -199,9 +206,40 @@ def evaluate_bleu():
 @app.route('/load_bleu')
 def load_bleu():
     df = pd.read_csv('bleu_scores.csv')
-    result = df.to_dict(orient='records')
+    
+    result = df.iloc[::-1].to_dict(orient='records')
     return jsonify(result)
+
+# Plot BLEU Score Evaluation
+@app.route('/plot_bleu')
+def plot_bleu():
+    try:
+        img = multiprocessing.Pool(1).apply(generate_plot)
+        return send_file(img, mimetype='image/png')
+    except Exception as e:
+        print(f"Error generating plot: {e}")
+        return jsonify({"error": str(e)}), 500
+    
+def generate_plot():
+    df = pd.read_csv('bleu_scores.csv')
+    # df = df[df['language'] == 'en'] 
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(df['source'], df['BLEU_score'], marker='o', linestyle='-', color='b')
+    ax.set_title('BLEU Score Evaluation')
+    ax.set_xlabel('Source')
+    ax.set_ylabel('BLEU Score')
+    plt.grid(True)
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+
+    img = io.BytesIO()
+    plt.savefig(img, format='png')
+    plt.close(fig) 
+    img.seek(0)
+    
+    return img
 
 # run app
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5001)
