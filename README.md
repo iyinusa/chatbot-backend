@@ -27,7 +27,7 @@ Dataset](https://huggingface.co/datasets/bitext/Bitext-customer-support-llm-chat
 
 ## Related Projects
 
-- **Frontend Repository**: [chatbot-front](https://github.com/iyinusa/chatbot-frontend) - The user interface that connects to this backend
+- **Frontend Repository**: [chatbot-frontend](https://github.com/iyinusa/chatbot-front) - The user interface that connects to this backend
 
 ## System Architecture
 
